@@ -1,0 +1,21 @@
+[project]
+name = "atinypgtool"
+version = "0.0.1"
+description = "AsyncIO-based Tiny PostgreSQL Tool"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "orjson",
+    "psycopg[binary,pool]",
+    "psycopg_pool",
+]
+
+[dependency-groups]
+dev = [
+    "bump-my-version",
+    "ipython",
+    "pre-commit",
+    "pytest",
+    "ruff",
+    "ty",
+]
