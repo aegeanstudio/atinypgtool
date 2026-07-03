@@ -38,11 +38,9 @@ jobs:
 
           tag = os.environ["GITHUB_REF_NAME"]
           version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
-          expected_tag = f"v{version}"
-          if tag != expected_tag:
+          if tag != version:
               raise SystemExit(
-                  f"Tag {tag!r} does not match pyproject.toml version {version!r}; "
-                  f"expected {expected_tag!r}."
+                  f"Tag {tag!r} does not match pyproject.toml version {version!r}."
               )
           PY
 
