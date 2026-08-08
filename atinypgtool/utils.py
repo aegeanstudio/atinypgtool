@@ -1,21 +1,22 @@
-# -*- coding: utf-8 -*-
-import dataclasses
 import typing
+from collections.abc import Awaitable, Callable, Sequence
 
 from psycopg import AsyncConnection, AsyncCursor
-from psycopg.pq import PGconn
+from psycopg.rows import DictRow, TupleRow
 
 
-class _SequencePlaceholder[T](typing.Sequence):
+class _SequencePlaceholder[T](Sequence[T]):
     @typing.overload
     def __getitem__(self, index: int, /) -> T: ...
 
     @typing.overload
-    def __getitem__(self, index: slice, /) -> typing.Sequence[T]: ...
+    def __getitem__(self, index: slice[int | None], /) -> Sequence[T]: ...
 
-    def __getitem__(self, _, /):
+    @typing.override
+    def __getitem__(self, index: int | slice, /) -> T | Sequence[T]:
         raise SyntaxError('SequencePlaceholder is empty')
 
+    @typing.override
     def __len__(self) -> int:
         return 0
 
@@ -23,34 +24,20 @@ class _SequencePlaceholder[T](typing.Sequence):
         return False
 
 
-SequencePlaceholder = _SequencePlaceholder[typing.Any]()
+SequencePlaceholder = _SequencePlaceholder[typing.Never]()
 
 
-type ConfigureFunc = typing.Callable[
-    [AsyncConnection],
-    typing.Awaitable | None,
+type ConfigureFunc = Callable[
+    [AsyncConnection[DictRow | TupleRow]],
+    Awaitable[None] | None,
 ]
 
-
-@typing.runtime_checkable
-class DataclassInstance(typing.Protocol):
-    __dataclass_fields__: typing.ClassVar[
-        dict[str, dataclasses.Field[typing.Any]]
-    ]
-
-
-class _PGConnPlaceholder(PGconn):
-    pass
-
-
-class _CursorPlaceholder(AsyncCursor):
-    def __init__(self) -> None:
-        super().__init__(
-            connection=AsyncConnection(pgconn=_PGConnPlaceholder()),
-        )
-
+class _CursorPlaceholder:
     def __bool__(self) -> bool:
         return False
 
 
-CursorPlaceholder = _CursorPlaceholder()
+CursorPlaceholder = typing.cast(
+    AsyncCursor[TupleRow],
+    typing.cast(object, _CursorPlaceholder()),
+)

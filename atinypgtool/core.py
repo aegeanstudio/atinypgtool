@@ -4,10 +4,12 @@ import contextlib
 import functools
 import inspect
 import logging
-import typing
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from typing import ParamSpec, TypeVar
 
 import orjson
 from psycopg import AsyncConnection, AsyncCursor
+from psycopg.rows import DictRow, TupleRow
 from psycopg.types.json import set_json_dumps, set_json_loads
 from psycopg_pool import AsyncConnectionPool
 from psycopg_pool.abc import AsyncKwargsParam
@@ -17,16 +19,19 @@ from atinypgtool.utils import ConfigureFunc, SequencePlaceholder
 set_json_loads(orjson.loads)
 set_json_dumps(orjson.dumps)
 
-_NAMED_POOL_DICT: dict[str, AsyncConnectionPool] = {}
+_NAMED_POOL_DICT: dict[str, AsyncConnectionPool[AsyncConnection]] = {}
 _POOL_CHECKER_TASK_DICT: dict[str, asyncio.Task[None]] = {}
 
 logger = logging.getLogger(__name__)
+
+P = ParamSpec('P')
+R = TypeVar('R')
 
 
 async def _check_pool_forever(
     *,
     name: str,
-    pool: AsyncConnectionPool,
+    pool: AsyncConnectionPool[AsyncConnection],
     interval: int,
 ) -> None:
     while True:
@@ -44,7 +49,7 @@ async def _check_pool_forever(
 def _ensure_pool_checker(
     *,
     name: str,
-    pool: AsyncConnectionPool,
+    pool: AsyncConnectionPool[AsyncConnection],
     interval: int,
 ) -> None:
     task = _POOL_CHECKER_TASK_DICT.get(name)
@@ -60,7 +65,7 @@ async def _stop_pool_checker(*, name: str) -> None:
     task = _POOL_CHECKER_TASK_DICT.pop(name, None)
     if not task:
         return
-    task.cancel()
+    _ = task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
 
@@ -77,7 +82,7 @@ async def init(
     pool_size: int = 16,
     open_timeout: int = 15,
     health_check_interval: int = 0,
-    configure_funcs: typing.Sequence[ConfigureFunc] = SequencePlaceholder,
+    configure_funcs: Sequence[ConfigureFunc] = SequencePlaceholder,
 ) -> None:
     if name in _NAMED_POOL_DICT:
         raise SyntaxError(f'Pool "{name}" already exists')
@@ -86,8 +91,7 @@ async def init(
     if health_check_interval < 0:
         raise SyntaxError('Health check interval should not be less than 0')
     minsize, maxsize = pool_size, pool_size
-    if minsize > 4:
-        minsize = 4
+    minsize = min(minsize, 4)
     kwargs: AsyncKwargsParam = {
         'autocommit': False,
         # 新建连接超过 5 秒未完成时快速失败，避免请求长时间卡在重连上。
@@ -105,16 +109,16 @@ async def init(
     configure = None
     if configure_funcs:
 
-        async def _configure(conn: AsyncConnection) -> None:
+        async def _configure(conn: AsyncConnection[TupleRow]) -> None:
             for func in configure_funcs:
                 if inspect.iscoroutinefunction(func):
                     await func(conn)
                 else:
-                    func(conn)
+                    _ = func(conn)
 
         configure = _configure
 
-    pool = AsyncConnectionPool(
+    pool: AsyncConnectionPool = AsyncConnectionPool(
         conninfo=dsn,
         min_size=minsize,
         max_size=maxsize,
@@ -152,21 +156,27 @@ async def close_all() -> None:
     _NAMED_POOL_DICT.clear()
 
 
-def with_cursor(*, name: str, transaction: bool) -> typing.Callable:
-    def wrapper(func: typing.Callable) -> typing.Callable:
+def with_cursor(
+    *,
+    name: str,
+    transaction: bool,
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
+    def wrapper(
+        func: Callable[P, Awaitable[R]],
+    ) -> Callable[P, Awaitable[R]]:
         argspec = inspect.getfullargspec(func)
         if all('cursor' not in x for x in (argspec.args, argspec.kwonlyargs)):
             raise SyntaxError('`cursor` is a required argument')
 
-        @functools.wraps(func)
-        async def wrapped(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        @functools.wraps(wrapped=func)
+        async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
             if name not in _NAMED_POOL_DICT:
                 raise SyntaxError(f'Pool "{name}" not found')
-            if 'cursor' in kwargs and kwargs['cursor']:
+            if kwargs.get('cursor'):
                 raise SyntaxError('`cursor` is a reserved argument')
             async with _NAMED_POOL_DICT[name].connection() as conn:  # noqa: SIM117
                 async with conn.cursor() as cursor:
-                    kwargs['cursor'] = cursor
+                    kwargs['cursor'] = cursor  # ty: ignore[invalid-assignment]
                     if transaction:
                         async with conn.transaction():
                             result = await func(*args, **kwargs)
@@ -184,7 +194,7 @@ async def with_cursor_context(
     *,
     name: str,
     transaction: bool,
-) -> typing.AsyncGenerator[AsyncCursor, None]:
+) -> AsyncGenerator[AsyncCursor[DictRow | TupleRow]]:
     if name not in _NAMED_POOL_DICT:
         raise RuntimeError(f'Pool "{name}" not found')
     async with _NAMED_POOL_DICT[name].connection() as conn:  # noqa: SIM117

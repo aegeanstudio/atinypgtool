@@ -1,6 +1,6 @@
 [project]
 name = "atinypgtool"
-version = "0.0.1"
+version = "0.0.2"
 description = "AsyncIO-based Tiny PostgreSQL Tool"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -12,10 +12,77 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "basedpyright",
     "bump-my-version",
     "ipython",
-    "pre-commit",
+    "prek",
+    "pyrefly",
     "pytest",
     "ruff",
+    "twine",
     "ty",
 ]
+
+[tool.basedpyright]
+include = ["atinypgtool"]
+pythonVersion = "3.13"
+typeCheckingMode = "all"
+
+[tool.pyrefly]
+project-includes = ["atinypgtool"]
+python-version = "3.13"
+preset = "strict"
+
+[tool.ruff]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "tests",
+    "sekai_backend_user/scripts",
+]
+line-length = 79
+
+[tool.ruff.lint]
+select = [
+    "YTT",
+    "ANN",
+    "ASYNC",
+    "B",
+    "A",
+    "COM",
+    "C4",
+    "INP",
+    "PIE",
+    "T20",
+    "Q",
+    "RSE",
+    "RET",
+    "SLF",
+    "SIM",
+    "ARG",
+    "PTH",
+    "I",
+    "NPY",
+    "PD",
+    "N",
+    "PERF",
+    "E",
+    "W",
+    "F",
+]
+ignore = [
+    "B008",
+]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+split-on-trailing-comma = false
+
+[tool.ruff.format]
+quote-style = "single"

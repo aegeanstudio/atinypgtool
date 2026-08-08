@@ -22,7 +22,13 @@ clean:
 	@rm -rf htmlcov
 
 lint:
+	@echo "Running basedpyright check..."
+	@uv run basedpyright --warnings
+	@echo "Running pyrefly check..."
+	@uv run pyrefly check
+	@echo "Running ruff check..."
 	@uv run ruff check --output-format=concise atinypgtool
+	@echo "Running ty check..."
 	@uv run ty check
 
 format:		# ruff format 命令需要执行两次，第一次会修复大部分问题，但可能会引入一些新的问题（折行场景最为常见），第二次执行可以修复这些新问题。

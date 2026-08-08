@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 import dataclasses
 import inspect
-import typing
+from collections.abc import Sequence
+from typing import LiteralString, cast
 
 from psycopg.sql import SQL
 
@@ -17,15 +17,15 @@ class SQLHelper:
             except AssertionError as e:
                 raise SyntaxError(
                     f'Base model "{base_model_cls}" '
-                    f'should be a dataclass or None',
+                    + 'should be a dataclass or None',
                 ) from e
-        self._base_model_cls = base_model_cls
+        self._base_model_cls: type | None = base_model_cls
 
     def _gen_fields(self, *, dataclass: type) -> tuple[list[str], list[str]]:
-        default_fields = []
+        default_fields: list[str] = []
         if self._base_model_cls is not None and issubclass(
             dataclass,
-            self._base_model_cls,  # noqa: type: ignore
+            self._base_model_cls,
         ):
             default_fields = [
                 i.strip('_')
@@ -62,7 +62,7 @@ class SQLHelper:
         *,
         dataclass: type,
         table_name: str,
-        limited_fields: typing.Sequence[str] = SequencePlaceholder,
+        limited_fields: Sequence[str] = SequencePlaceholder,
     ) -> SQL:
         _, custom_fields = self._gen_fields(dataclass=dataclass)
         if limited_fields and (
@@ -83,7 +83,7 @@ class SQLHelper:
         *,
         dataclass: type,
         table_name: str,
-        limited_fields: typing.Sequence[str] = SequencePlaceholder,
+        limited_fields: Sequence[str] = SequencePlaceholder,
     ) -> SQL:
         default_fields, custom_fields = self._gen_fields(dataclass=dataclass)
         if limited_fields and (
@@ -102,4 +102,4 @@ class SQLHelper:
 
     @staticmethod
     def make_sql(*, sql_str: str) -> SQL:
-        return SQL(obj=sql_str.strip())  # type: ignore
+        return SQL(obj=cast(LiteralString, sql_str.strip()))
